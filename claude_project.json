@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "comport": {
+      "command": "npx",
+      "args": ["-y", "@andybrandt/mcp-server-comport"],
+      "disabled": false
+    }
+  }
+}

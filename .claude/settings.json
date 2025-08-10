@@ -1,0 +1,9 @@
+{
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "puppeteer",
+    "context-portal", 
+    "context7"
+  ],
+  "disabledMcpjsonServers": []
+}

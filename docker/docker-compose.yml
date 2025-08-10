@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  puppeteer-mcp:
+    build: ./puppeteer
+    container_name: mythalterminal-puppeteer-mcp
+    ports:
+      - "3001:3001"
+    networks:
+      - mcp-network
+    volumes:
+      - ../:/workspace:ro
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+      
+  context-portal-mcp:
+    build: ./context-portal
+    container_name: mythalterminal-context-portal
+    ports:
+      - "3002:3002"
+    networks:
+      - mcp-network
+    volumes:
+      - ../:/workspace
+      - context-data:/data
+    environment:
+      - WORKSPACE_ID=mythalterminal
+      - DATABASE_URL=/data/context_portal.db
+    restart: unless-stopped
+      
+  context7-mcp:
+    build: ./context7
+    container_name: mythalterminal-context7
+    ports:
+      - "3003:3003"
+    networks:
+      - mcp-network
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+
+networks:
+  mcp-network:
+    driver: bridge
+
+volumes:
+  context-data:
+    driver: local
