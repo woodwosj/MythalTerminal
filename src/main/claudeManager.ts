@@ -1,22 +1,25 @@
-import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import path from 'path';
 import fs from 'fs/promises';
 import os from 'os';
+import Anthropic from '@anthropic-ai/sdk';
 // SECURITY FIX: Import security utilities
-import { InputValidator, ProcessLockManager, SECURITY_CONSTANTS, AllowedModel } from '../shared/security';
+import { InputValidator, ProcessLockManager, SECURITY_CONSTANTS } from '../shared/security';
 
 interface ClaudeInstance {
   name: string;
-  process: ChildProcess | null;
+  client: Anthropic | null;
   prompt: string;
+  model: string;
   restartAttempts: number;
   lastRestart: Date | null;
   status: 'idle' | 'running' | 'crashed' | 'restarting';
+  conversation: Anthropic.MessageParam[];
 }
 
 // SECURITY FIX: Replace 'any' with proper types
 interface ClaudeSettings {
+  apiKey?: string;
   mcpServers?: string[];
   [key: string]: unknown;
 }
@@ -25,12 +28,14 @@ interface ClaudeConfig {
   workingDirs: string[];
   settings: ClaudeSettings;
   mcpServers: string[];
+  apiKey?: string;
 }
 
 const CLAUDE_INSTANCES = {
   main: {
     name: 'main-terminal',
-    prompt: 'You are the main terminal assistant. Respond to user commands and queries.'
+    prompt: 'You are the main terminal assistant. Respond to user commands and queries.',
+    model: 'claude-3-5-sonnet-20241022'
   },
   contextManager: {
     name: 'context-manager',
@@ -39,19 +44,22 @@ const CLAUDE_INSTANCES = {
     2. Update RESUMEWORK.md with key information
     3. Identify important context to preserve
     4. Manage context layers efficiently
-    Never respond to user - only process context.`
+    Never respond to user - only process context.`,
+    model: 'claude-3-5-sonnet-20241022'
   },
   summarizer: {
     name: 'summarizer',
     prompt: `You create executive summaries of context blocks.
     Be concise and focus on actionable information.
-    Output JSON format: {"summary": "...", "keyPoints": []}`
+    Output JSON format: {"summary": "...", "keyPoints": []}`,
+    model: 'claude-3-haiku-20240307'
   },
   planner: {
     name: 'planner',
     prompt: `You execute planned sequences of tasks.
     Follow the queue strictly and report status.
-    Output JSON format: {"status": "...", "result": "...", "error": null}`
+    Output JSON format: {"status": "...", "result": "...", "error": null}`,
+    model: 'claude-3-5-sonnet-20241022'
   }
 };
 
@@ -61,18 +69,26 @@ export class ClaudeInstanceManager extends EventEmitter {
   private restartQueue: Set<string> = new Set();
   // SECURITY FIX: Add process lock management for race condition prevention
   private processLocks: Map<string, boolean> = new Map();
+  private apiKey: string | null = null;
 
   async initialize() {
     this.config = await this.detectClaudeConfig();
+    this.apiKey = this.config.apiKey || process.env.ANTHROPIC_API_KEY || null;
+    
+    if (!this.apiKey) {
+      console.warn('No Anthropic API key found. Claude functionality will be limited.');
+    }
     
     for (const [key, config] of Object.entries(CLAUDE_INSTANCES)) {
       this.instances.set(key, {
         name: config.name,
-        process: null,
+        client: null,
         prompt: config.prompt,
+        model: config.model,
         restartAttempts: 0,
         lastRestart: null,
-        status: 'idle'
+        status: 'idle',
+        conversation: []
       });
     }
   }
@@ -81,7 +97,8 @@ export class ClaudeInstanceManager extends EventEmitter {
     const config: ClaudeConfig = {
       workingDirs: [],
       settings: {},
-      mcpServers: []
+      mcpServers: [],
+      apiKey: undefined
     };
 
     const configPaths = [
@@ -98,6 +115,10 @@ export class ClaudeInstanceManager extends EventEmitter {
         
         if (parsed.mcpServers) {
           config.mcpServers = [...new Set([...config.mcpServers, ...parsed.mcpServers])];
+        }
+        
+        if (parsed.anthropicApiKey) {
+          config.apiKey = parsed.anthropicApiKey;
         }
       } catch (error) {
         // Config file doesn't exist or is invalid
@@ -127,7 +148,7 @@ export class ClaudeInstanceManager extends EventEmitter {
     return config;
   }
 
-  async spawnInstance(instanceKey: string): Promise<void> {
+  async initializeInstance(instanceKey: string): Promise<void> {
     // SECURITY FIX: Validate instance key
     if (!InputValidator.validateInstanceKey(instanceKey)) {
       throw new Error(`Invalid instance key: ${instanceKey}`);
@@ -138,105 +159,50 @@ export class ClaudeInstanceManager extends EventEmitter {
       throw new Error(`Unknown instance: ${instanceKey}`);
     }
 
-    if (instance.process && instance.status === 'running') {
+    if (instance.client && instance.status === 'running') {
       return;
     }
 
+    if (!this.apiKey) {
+      throw new Error('No Anthropic API key available. Please set ANTHROPIC_API_KEY environment variable.');
+    }
+
     // SECURITY FIX: Acquire lock to prevent race conditions
-    const releaseLock = await ProcessLockManager.acquireLock(`spawn-${instanceKey}`);
+    const releaseLock = await ProcessLockManager.acquireLock(`init-${instanceKey}`);
     
     try {
       // Double-check status after acquiring lock
-      if (instance.process && instance.status === 'running') {
+      if (instance.client && instance.status === 'running') {
         releaseLock();
         return;
       }
 
       instance.status = 'restarting';
 
-      const modelName = 'claude-3-5-sonnet-20241022';
-      // SECURITY FIX: Validate model name
-      if (!InputValidator.validateModelName(modelName)) {
-        throw new Error(`Invalid model name: ${modelName}`);
-      }
-
-      const args = [
-        '--no-interactive',
-        '--model', modelName
-      ];
-
-      if (this.config?.workingDirs.length) {
-        // SECURITY FIX: Validate working directories
-        const validDirs = this.config.workingDirs.filter(dir => InputValidator.validatePath(dir));
-        if (validDirs.length !== this.config.workingDirs.length) {
-          console.warn('Some working directories failed validation and were excluded');
-        }
-        if (validDirs.length > 0) {
-          args.push('--add-dir', ...validDirs);
-        }
-      }
-
-      // SECURITY FIX: Validate spawn arguments before execution
-      const validation = InputValidator.validateSpawnArgs('claude', args);
-      if (!validation.isValid) {
-        throw new Error(`Command validation failed: ${validation.error}`);
-      }
-
       // SECURITY FIX: Validate prompt length
       if (!InputValidator.validatePromptLength(instance.prompt)) {
         throw new Error('Prompt exceeds maximum allowed length');
       }
 
-      const proc = spawn('claude', args, {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: {
-          ...process.env,
-          CLAUDE_PROMPT: instance.prompt
-        },
-        // SECURITY FIX: Add timeout to prevent hanging processes
-        timeout: SECURITY_CONSTANTS.PROCESS_TIMEOUT_MS
+      // Initialize Anthropic client
+      instance.client = new Anthropic({
+        apiKey: this.apiKey,
       });
 
-      instance.process = proc;
+      // Initialize conversation with system prompt
+      instance.conversation = [{
+        role: 'assistant',
+        content: `I am ${instance.name}, ready to assist. ${instance.prompt}`
+      }];
+
       instance.status = 'running';
       instance.lastRestart = new Date();
-
-      proc.stdin?.write(instance.prompt + '\n');
-
-      proc.on('exit', (code, signal) => {
-        console.log(`Claude instance ${instanceKey} exited with code ${code}, signal ${signal}`);
-        // SECURITY FIX: Clean up resources on process exit
-        proc.removeAllListeners();
-        proc.stdout?.removeAllListeners();
-        proc.stderr?.removeAllListeners();
-        instance.process = null;
-        instance.status = 'crashed';
-        this.handleCrash(instanceKey);
-      });
-
-      proc.on('error', (error) => {
-        console.error(`Claude instance ${instanceKey} error:`, error);
-        // SECURITY FIX: Clean up resources on process error
-        proc.removeAllListeners();
-        proc.stdout?.removeAllListeners();
-        proc.stderr?.removeAllListeners();
-        instance.process = null;
-        instance.status = 'crashed';
-        this.handleCrash(instanceKey);
-      });
-
-      proc.stdout?.on('data', (data) => {
-        this.emit(`${instanceKey}:output`, data.toString());
-      });
-
-      proc.stderr?.on('data', (data) => {
-        this.emit(`${instanceKey}:error`, data.toString());
-      });
+      instance.restartAttempts = 0;
 
       this.emit('instance:started', instanceKey);
       
     } catch (error) {
-      console.error(`Failed to spawn Claude instance ${instanceKey}:`, error);
+      console.error(`Failed to initialize Claude instance ${instanceKey}:`, error);
       instance.status = 'crashed';
       this.handleCrash(instanceKey);
     } finally {
@@ -286,7 +252,7 @@ export class ClaudeInstanceManager extends EventEmitter {
 
       setTimeout(async () => {
         this.restartQueue.delete(instanceKey);
-        await this.spawnInstance(instanceKey);
+        await this.initializeInstance(instanceKey);
       }, delay);
       
     } finally {
@@ -295,7 +261,7 @@ export class ClaudeInstanceManager extends EventEmitter {
     }
   }
 
-  async sendToInstance(instanceKey: string, message: string): Promise<void> {
+  async sendToInstance(instanceKey: string, message: string): Promise<string> {
     // SECURITY FIX: Validate inputs
     if (!InputValidator.validateInstanceKey(instanceKey)) {
       throw new Error(`Invalid instance key: ${instanceKey}`);
@@ -306,22 +272,54 @@ export class ClaudeInstanceManager extends EventEmitter {
     }
 
     const instance = this.instances.get(instanceKey);
-    if (!instance || !instance.process) {
-      await this.spawnInstance(instanceKey);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+    if (!instance || !instance.client || instance.status !== 'running') {
+      await this.initializeInstance(instanceKey);
     }
 
-    const instanceAfterSpawn = this.instances.get(instanceKey);
-    if (!instanceAfterSpawn?.process?.stdin) {
+    const instanceAfterInit = this.instances.get(instanceKey);
+    if (!instanceAfterInit?.client || instanceAfterInit.status !== 'running') {
       throw new Error(`Claude instance ${instanceKey} is not available`);
     }
 
-    instanceAfterSpawn.process.stdin.write(message + '\n');
+    try {
+      // Add user message to conversation
+      instanceAfterInit.conversation.push({
+        role: 'user',
+        content: message
+      });
+
+      // Send message to Claude API
+      const response = await instanceAfterInit.client.messages.create({
+        model: instanceAfterInit.model,
+        max_tokens: 4096,
+        messages: instanceAfterInit.conversation.slice(-10), // Keep last 10 messages for context
+      });
+
+      const assistantResponse = response.content
+        .filter(content => content.type === 'text')
+        .map(content => (content as any).text)
+        .join('');
+
+      // Add assistant response to conversation
+      instanceAfterInit.conversation.push({
+        role: 'assistant',
+        content: assistantResponse
+      });
+
+      // Emit output for IPC forwarding
+      this.emit(`${instanceKey}:output`, assistantResponse);
+
+      return assistantResponse;
+    } catch (error: any) {
+      console.error(`Error sending message to Claude instance ${instanceKey}:`, error);
+      this.emit(`${instanceKey}:error`, error.message);
+      throw error;
+    }
   }
 
   async startAll() {
     for (const key of this.instances.keys()) {
-      await this.spawnInstance(key);
+      await this.initializeInstance(key);
       await new Promise(resolve => setTimeout(resolve, 500));
     }
   }
@@ -329,29 +327,10 @@ export class ClaudeInstanceManager extends EventEmitter {
   // SECURITY FIX: Properly clean up resources to prevent memory leaks
   shutdown() {
     for (const instance of this.instances.values()) {
-      if (instance.process) {
-        // SECURITY FIX: Remove all event listeners before killing process
-        instance.process.removeAllListeners('exit');
-        instance.process.removeAllListeners('error');
-        instance.process.stdout?.removeAllListeners('data');
-        instance.process.stderr?.removeAllListeners('data');
-        
-        // SECURITY FIX: Close stdin/stdout/stderr streams
-        if (instance.process.stdin && !instance.process.stdin.destroyed) {
-          instance.process.stdin.end();
-        }
-        
-        // Kill the process with proper signal handling
-        instance.process.kill('SIGTERM');
-        
-        // Set a backup timer to force kill if SIGTERM doesn't work
-        setTimeout(() => {
-          if (instance.process && !instance.process.killed) {
-            instance.process.kill('SIGKILL');
-          }
-        }, 5000);
-        
-        instance.process = null;
+      if (instance.client) {
+        // Clean up conversation history
+        instance.conversation = [];
+        instance.client = null;
         instance.status = 'idle';
       }
     }
@@ -374,5 +353,32 @@ export class ClaudeInstanceManager extends EventEmitter {
       statuses[key] = instance.status;
     }
     return statuses;
+  }
+
+  // New method to get conversation history
+  getConversationHistory(instanceKey: string): Anthropic.MessageParam[] {
+    const instance = this.instances.get(instanceKey);
+    return instance?.conversation || [];
+  }
+
+  // New method to clear conversation history
+  clearConversationHistory(instanceKey: string): void {
+    const instance = this.instances.get(instanceKey);
+    if (instance) {
+      instance.conversation = [];
+    }
+  }
+
+  // New method to set API key
+  setApiKey(apiKey: string): void {
+    this.apiKey = apiKey;
+    // Reinitialize all running instances with new API key
+    for (const [key, instance] of this.instances) {
+      if (instance.status === 'running') {
+        instance.client = null;
+        instance.status = 'idle';
+        this.initializeInstance(key).catch(console.error);
+      }
+    }
   }
 }

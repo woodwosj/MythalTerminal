@@ -51,13 +51,17 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const result = await window.mythalAPI.claude.send(instanceKey, message);
       if (!result.success) {
         console.error('Failed to send to Claude:', result.error);
+        throw new Error(result.error);
       }
       
       set((state) => ({
-        currentConversation: state.currentConversation + `\nUser: ${message}\n`,
+        currentConversation: state.currentConversation + `\nUser: ${message}\nClaude: ${result.response || ''}\n`,
       }));
+      
+      return result.response;
     } catch (error) {
       console.error('Error sending to Claude:', error);
+      throw error;
     }
   },
 

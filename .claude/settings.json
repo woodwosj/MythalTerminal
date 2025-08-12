@@ -3,7 +3,44 @@
   "enabledMcpjsonServers": [
     "puppeteer",
     "context-portal", 
-    "context7"
+    "context7",
+    "playwright",
+    "filesystem"
   ],
-  "disabledMcpjsonServers": []
+  "disabledMcpjsonServers": [],
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read|Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/stephen-woodworth/Desktop/MythalTerminal/.claude/scripts/check_conport_init.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command", 
+            "command": "echo '[CONPORT_REMINDER] Consider logging decisions or patterns if significant changes were made' >&2"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat $HOME/.claude/conport_status.txt 2>/dev/null | xargs -I {} echo 'ConPort Status: {}' >&2"
+          }
+        ]
+      }
+    ]
+  }
 }

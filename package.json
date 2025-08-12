@@ -7,7 +7,7 @@
     "dev": "concurrently -k \"npm run dev:main\" \"npm run dev:renderer\" \"npm run electron:dev\"",
     "dev:main": "NODE_ENV=development tsc -p tsconfig.main.json --watch",
     "dev:renderer": "NODE_ENV=development vite --config vite.config.mjs",
-    "electron:dev": "wait-on http://localhost:3000 && NODE_ENV=development electron . --dev",
+    "electron:dev": "wait-on http://localhost:3000 && NODE_ENV=development electron . --dev --no-sandbox",
     "build": "npm run build:main && npm run build:renderer",
     "build:main": "tsc -p tsconfig.main.json",
     "build:renderer": "vite build --config vite.config.mjs",
@@ -21,6 +21,11 @@
     "test:integration": "jest --testPathPattern=integration",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "test:visual": "./tests/e2e/run-visual-tests.sh",
+    "test:terminal": "playwright test tests/e2e/terminal-core.spec.ts --project=electron",
+    "test:claude": "playwright test tests/e2e/claude-integration.spec.ts --project=electron",
+    "test:context": "playwright test tests/e2e/context-layers.spec.ts --project=electron",
+    "test:commands": "playwright test tests/e2e/special-commands.spec.ts --project=electron",
     "test:e2e:debug": "playwright test --debug"
   },
   "keywords": [
@@ -32,6 +37,7 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "@executeautomation/playwright-mcp-server": "^1.0.6",
     "@jest/globals": "^29.7.0",
     "@playwright/test": "^1.54.2",
     "@testing-library/jest-dom": "^6.4.0",
@@ -63,11 +69,13 @@
     "wait-on": "^8.0.4"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.59.0",
     "@modelcontextprotocol/sdk": "^0.6.0",
     "better-sqlite3": "^11.3.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.0.0",
-    "electron-store": "^10.0.0",
+    "electron-store": "^8.2.0",
+    "gpt-tokenizer": "^3.0.1",
     "node-pty": "^1.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

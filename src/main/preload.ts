@@ -70,12 +70,24 @@ const api = {
   resumework: {
     save: (projectPath: string, content: string, tokens: number) =>
       ipcRenderer.invoke('resumework:save', projectPath, content, tokens),
-    get: (projectPath: string) => ipcRenderer.invoke('resumework:get', projectPath)
+    get: (projectPath: string) => ipcRenderer.invoke('resumework:get', projectPath),
+    generate: (projectPath: string) => ipcRenderer.invoke('resumework:generate', projectPath)
   },
   
   tokens: {
     record: (estimated: number, actual?: number, percentage?: number, warningLevel?: string) =>
       ipcRenderer.invoke('tokens:record', estimated, actual, percentage, warningLevel)
+  },
+
+  settings: {
+    setApiKey: (apiKey: string) => ipcRenderer.invoke('settings:setApiKey', apiKey),
+    getApiKey: () => ipcRenderer.invoke('settings:getApiKey'),
+    deleteApiKey: () => ipcRenderer.invoke('settings:deleteApiKey'),
+    hasApiKey: () => ipcRenderer.invoke('settings:hasApiKey'),
+    getTheme: () => ipcRenderer.invoke('settings:getTheme'),
+    setTheme: (theme: 'dark' | 'light') => ipcRenderer.invoke('settings:setTheme', theme),
+    getTerminalSettings: () => ipcRenderer.invoke('settings:getTerminalSettings'),
+    setTerminalSettings: (settings: any) => ipcRenderer.invoke('settings:setTerminalSettings', settings)
   }
 };
 

@@ -1,0 +1,337 @@
+/**
+ * RESUMEWORK.md Auto-Generation System
+ * Integrates ConPort data, context layers, and project state to generate comprehensive project documentation
+ */
+
+import { formatTokenCount } from './tokenUtils';
+
+export interface ProjectState {
+  name: string;
+  path: string;
+  lastUpdated: Date;
+  totalTokens: number;
+  contextLayers: Array<{
+    id: number;
+    type: 'core' | 'active' | 'reference' | 'archive';
+    content: string;
+    tokens: number;
+    isStarred: boolean;
+    createdAt: Date;
+    lastAccessed?: Date;
+  }>;
+  recentDecisions: Array<{
+    id: number;
+    summary: string;
+    rationale: string;
+    tags: string[];
+    createdAt: Date;
+  }>;
+  activeProgress: Array<{
+    id: number;
+    description: string;
+    status: string;
+    createdAt: Date;
+  }>;
+  systemPatterns: Array<{
+    name: string;
+    description: string;
+    tags: string[];
+  }>;
+  testResults?: {
+    unit: { total: number; passed: number; coverage: string };
+    e2e: { total: number; passed: number; duration: string };
+    lastRun: Date;
+  };
+}
+
+export interface ConPortData {
+  decisions: any[];
+  progress: any[];
+  patterns: any[];
+  customData: any[];
+  recentActivity: any[];
+}
+
+/**
+ * Generate comprehensive RESUMEWORK.md content
+ */
+export async function generateResumeWorkContent(
+  projectState: ProjectState,
+  conportData: ConPortData,
+  includeDebugInfo = false
+): Promise<string> {
+  const timestamp = new Date().toISOString().replace('T', ' ').substr(0, 19) + ' EST';
+  
+  return `# RESUMEWORK.md - ${projectState.name} Project Status
+**Last Updated: ${timestamp}**
+
+## 🎯 PROJECT OVERVIEW
+${projectState.name} is an AI-centric terminal application with intelligent context management, featuring multi-Claude instance integration, auto-archiving, and semantic project memory via ConPort.
+
+## 📊 CURRENT PROJECT STATE
+
+### Application Status: ${getApplicationStatus(projectState)}
+- **Build Status**: ${getBuildStatus(projectState)}
+- **Context Tokens**: ${formatTokenCount(projectState.totalTokens)} / ${formatTokenCount(200000)} (${Math.round((projectState.totalTokens / 200000) * 100)}%)
+- **Active Layers**: ${projectState.contextLayers.filter(l => l.type === 'active').length}
+- **Starred Context**: ${projectState.contextLayers.filter(l => l.isStarred).length} items
+${projectState.testResults ? `- **Test Coverage**: Unit: ${projectState.testResults.unit.coverage} (${projectState.testResults.unit.passed}/${projectState.testResults.unit.total}) | E2E: ${projectState.testResults.e2e.passed}/${projectState.testResults.e2e.total}` : ''}
+
+### Context Layer Distribution
+${generateContextLayerSummary(projectState.contextLayers)}
+
+## 🚀 RECENT ACCOMPLISHMENTS
+
+### Key Decisions (Last 10)
+${generateDecisionsSummary(conportData.decisions.slice(0, 10))}
+
+### Active Progress Items
+${generateProgressSummary(conportData.progress.filter(p => p.status === 'IN_PROGRESS' || p.status === 'TODO'))}
+
+## 🧠 INTELLIGENT CONTEXT MANAGEMENT
+
+### System Patterns
+${generatePatternsSummary(conportData.patterns)}
+
+### Token Management
+- **Total Context**: ${formatTokenCount(projectState.totalTokens)}
+- **Safe Threshold**: ${formatTokenCount(200000 * 0.7)} (70%)
+- **Warning Level**: ${getTokenWarningLevel(projectState.totalTokens)}
+- **Auto-archiving**: ${projectState.contextLayers.filter(l => l.type === 'archive').length} archived conversations
+- **Starred Content**: ${projectState.contextLayers.filter(l => l.isStarred).length} protected items
+
+### Context Layers Status
+${generateDetailedContextStatus(projectState.contextLayers)}
+
+## 🔧 DEVELOPMENT WORKFLOW
+
+### Current Focus Areas
+${generateCurrentFocus(conportData.recentActivity, conportData.progress)}
+
+### Next Actions
+${generateNextActions(conportData.progress, projectState)}
+
+## 📝 KNOWLEDGE BASE STATUS
+
+### ConPort Integration ✅
+${generateConPortStatus(conportData)}
+
+### Recent Activity Summary
+${generateRecentActivitySummary(conportData.recentActivity)}
+
+## 🏗️ PROJECT ARCHITECTURE
+
+### Tech Stack
+${generateTechStackSummary()}
+
+### Key Components
+- **Context Management**: Intelligent layer system with auto-pruning
+- **Token Monitoring**: Real-time usage tracking with visual indicators
+- **Auto-Archiving**: Conversation preservation on /clear command
+- **ConPort Integration**: Semantic search and knowledge graph
+- **Multi-Claude Support**: Instance management for different tasks
+
+## 🚨 CRITICAL CONTEXT FOR CONTINUITY
+
+### Essential Information
+${generateEssentialInfo(projectState, conportData)}
+
+### Known Issues & Solutions
+${generateKnownIssues(conportData.customData)}
+
+### Development Environment
+\`\`\`bash
+# Start development
+npm run dev
+
+# Run tests
+npm test                    # Unit tests
+npx playwright test        # E2E tests
+
+# Build production
+npm run build
+npm start
+\`\`\`
+
+---
+*This document is auto-generated by MythalTerminal's intelligent context management system. ConPort provides persistent memory across sessions with semantic search capabilities.*
+
+${includeDebugInfo ? generateDebugInfo(projectState, conportData) : ''}
+`;
+}
+
+function getApplicationStatus(state: ProjectState): string {
+  const tokenUsage = state.totalTokens / 200000;
+  if (tokenUsage > 0.9) return '⚠️ NEAR CAPACITY';
+  if (tokenUsage > 0.7) return '🟡 HIGH USAGE';
+  if (state.contextLayers.filter(l => l.type === 'active').length === 0) return '🔴 NO ACTIVE CONTEXT';
+  return '🟢 OPERATIONAL';
+}
+
+function getBuildStatus(state: ProjectState): string {
+  if (state.testResults) {
+    const unitPassed = state.testResults.unit.passed / state.testResults.unit.total > 0.8;
+    const e2ePassed = state.testResults.e2e.passed === state.testResults.e2e.total;
+    return unitPassed && e2ePassed ? 'Successfully builds and tests pass' : 'Builds with test failures';
+  }
+  return 'Unknown - run tests to verify';
+}
+
+function generateContextLayerSummary(layers: ProjectState['contextLayers']): string {
+  const counts: Record<string, number> = {
+    core: layers.filter(l => l.type === 'core').length,
+    active: layers.filter(l => l.type === 'active').length,
+    reference: layers.filter(l => l.type === 'reference').length,
+    archive: layers.filter(l => l.type === 'archive').length
+  };
+  
+  return `- **Core (⭐)**: ${counts.core} items - Never pruned, always available
+- **Active (🔵)**: ${counts.active} items - Current working context
+- **Reference (📚)**: ${counts.reference} items - Available for lookup
+- **Archive (📦)**: ${counts.archive} items - Searchable conversation history`;
+}
+
+function generateDecisionsSummary(decisions: any[]): string {
+  if (!decisions.length) return '- No recent decisions recorded';
+  
+  return decisions.map((decision, index) => 
+    `${index + 1}. **${decision.summary}** (${new Date(decision.created_at).toLocaleDateString()})
+   - Rationale: ${decision.rationale}
+   - Tags: ${decision.tags?.join(', ') || 'none'}`
+  ).join('\n\n');
+}
+
+function generateProgressSummary(progress: any[]): string {
+  if (!progress.length) return '- No active progress items';
+  
+  return progress.map(item => 
+    `- **${item.status}**: ${item.description} (${new Date(item.created_at).toLocaleDateString()})`
+  ).join('\n');
+}
+
+function generatePatternsSummary(patterns: any[]): string {
+  if (!patterns.length) return '- No system patterns documented';
+  
+  return patterns.slice(0, 5).map(pattern =>
+    `- **${pattern.name}**: ${pattern.description}`
+  ).join('\n');
+}
+
+function getTokenWarningLevel(tokens: number): string {
+  const percentage = tokens / 200000;
+  if (percentage > 0.95) return '🔴 CRITICAL';
+  if (percentage > 0.85) return '🟡 WARNING';
+  return '🟢 SAFE';
+}
+
+function generateDetailedContextStatus(layers: ProjectState['contextLayers']): string {
+  const recentLayers = layers
+    .filter(l => l.lastAccessed && new Date(l.lastAccessed) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))
+    .length;
+    
+  return `- **Recent Activity**: ${recentLayers} layers accessed in last 7 days
+- **Token Distribution**: Core: ${formatTokenCount(layers.filter(l => l.type === 'core').reduce((sum, l) => sum + l.tokens, 0))}, Active: ${formatTokenCount(layers.filter(l => l.type === 'active').reduce((sum, l) => sum + l.tokens, 0))}
+- **Auto-Archive Candidates**: ${layers.filter(l => !l.isStarred && l.type !== 'archive' && (!l.lastAccessed || new Date(l.lastAccessed) < new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))).length} items`;
+}
+
+function generateCurrentFocus(recentActivity: any[], progress: any[]): string {
+  const inProgress = progress.filter(p => p.status === 'IN_PROGRESS');
+  if (!inProgress.length) return '- No active focus areas identified';
+  
+  return inProgress.map(item => `- ${item.description}`).join('\n');
+}
+
+function generateNextActions(progress: any[], state: ProjectState): string {
+  const todoItems = progress.filter(p => p.status === 'TODO').slice(0, 5);
+  const suggestions = [];
+  
+  if (state.totalTokens > 200000 * 0.8) {
+    suggestions.push('- 🚨 **Priority**: Run context pruning to manage token usage');
+  }
+  
+  if (state.contextLayers.filter(l => l.type === 'active').length === 0) {
+    suggestions.push('- 🎯 **Setup**: Add active context layers for current work');
+  }
+  
+  todoItems.forEach(item => suggestions.push(`- ${item.description}`));
+  
+  return suggestions.length ? suggestions.join('\n') : '- No specific actions identified';
+}
+
+function generateConPortStatus(data: ConPortData): string {
+  return `- **Decisions Logged**: ${data.decisions.length} architectural and implementation choices
+- **Progress Tracked**: ${data.progress.length} items across project lifecycle
+- **System Patterns**: ${data.patterns.length} documented patterns and practices
+- **Knowledge Base**: ${data.customData.length} custom data entries
+- **Semantic Search**: Ready for natural language queries`;
+}
+
+function generateRecentActivitySummary(activity: any[]): string {
+  if (!activity.length) return '- No recent activity recorded';
+  
+  return activity.slice(0, 5).map(item => 
+    `- ${item.description || item.summary || 'Activity'} (${new Date(item.created_at || item.timestamp).toLocaleDateString()})`
+  ).join('\n');
+}
+
+function generateTechStackSummary(): string {
+  return `- **Frontend**: React 18 + TypeScript + Tailwind CSS + Zustand
+- **Desktop**: Electron 33 + Node-pty for terminal
+- **Database**: SQLite with better-sqlite3
+- **AI Integration**: Anthropic SDK (Claude 3.5 Sonnet)
+- **Testing**: Jest + Playwright for comprehensive coverage
+- **Context Management**: Custom intelligent layer system
+- **Knowledge Graph**: ConPort integration for semantic search`;
+}
+
+function generateEssentialInfo(state: ProjectState, data: ConPortData): string {
+  const criticalDecisions = data.decisions.filter(d => d.tags?.includes('critical')).slice(0, 3);
+  const blockers = data.progress.filter(p => p.status === 'BLOCKED');
+  
+  let info = `- **Project Path**: ${state.path}
+- **Total Context**: ${formatTokenCount(state.totalTokens)} tokens
+- **Last Activity**: ${state.lastUpdated.toLocaleDateString()}`;
+
+  if (criticalDecisions.length) {
+    info += '\n- **Critical Decisions**: ' + criticalDecisions.map(d => d.summary).join(', ');
+  }
+  
+  if (blockers.length) {
+    info += '\n- **⚠️ Blockers**: ' + blockers.map(b => b.description).join(', ');
+  }
+  
+  return info;
+}
+
+function generateKnownIssues(customData: any[]): string {
+  const debugSolutions = customData.filter(d => d.category === 'DebugSolutions');
+  if (!debugSolutions.length) return '- No known issues documented';
+  
+  return debugSolutions.slice(0, 3).map(solution => 
+    `- **${solution.key}**: ${typeof solution.value === 'string' ? solution.value : JSON.stringify(solution.value)}`
+  ).join('\n');
+}
+
+function generateDebugInfo(state: ProjectState, data: ConPortData): string {
+  return `
+
+## 🔧 DEBUG INFORMATION
+
+### Context Layers Detail
+${state.contextLayers.map(layer => 
+  `- **${layer.type.toUpperCase()}** #${layer.id}: ${layer.tokens} tokens, ${layer.isStarred ? 'starred, ' : ''}last accessed: ${layer.lastAccessed?.toLocaleDateString() || 'never'}`
+).join('\n')}
+
+### ConPort Data Summary
+- Decisions: ${data.decisions.length}
+- Progress: ${data.progress.length}  
+- Patterns: ${data.patterns.length}
+- Custom Data: ${data.customData.length}
+- Recent Activity: ${data.recentActivity.length}
+
+### System State
+- Generated at: ${new Date().toISOString()}
+- Token calculation: ${state.totalTokens} total
+- Layer distribution: ${JSON.stringify(state.contextLayers.reduce((acc, l) => ({ ...acc, [l.type]: (acc[l.type] || 0) + 1 }), {} as Record<string, number>))}
+`;
+}

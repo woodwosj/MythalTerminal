@@ -61,7 +61,7 @@ test.describe('Terminal Functionality', () => {
 
   test('should display dark theme background', async ({ window }) => {
     // Check main container has dark background
-    const mainContainer = await window.locator('.bg-gray-900');
+    const mainContainer = await window.locator('.bg-gray-900').first();
     await expect(mainContainer).toBeVisible();
     
     // Check header has dark gray background

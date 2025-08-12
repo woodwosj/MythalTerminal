@@ -9,13 +9,13 @@ export const SECURITY_CONSTANTS = {
   RESTART_COOLDOWN_MS: 10000,
   PROCESS_TIMEOUT_MS: 300000,
   
-  // Command validation
-  ALLOWED_COMMANDS: ['claude'] as const,
+  // API validation (formerly command validation)
+  ALLOWED_COMMANDS: ['claude'] as const, // Kept for backwards compatibility
   ALLOWED_ARGS: [
     '--no-interactive',
     '--model',
     '--add-dir'
-  ] as const,
+  ] as const, // Kept for backwards compatibility
   
   // Claude model whitelist
   ALLOWED_MODELS: [

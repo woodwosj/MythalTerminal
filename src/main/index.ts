@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'path';
 import { ClaudeInstanceManager } from './claudeManager';
+import { SettingsManager } from './settingsManager';
 import { setupDatabase } from './database';
 import { setupIPC } from './ipc';
 
@@ -44,8 +45,23 @@ async function createWindow() {
 async function initialize() {
   try {
     await setupDatabase();
+    
+    // Initialize settings manager and load API key
+    const settingsManager = new SettingsManager();
+    const apiKey = settingsManager.getApiKey();
+    
+    // Initialize Claude manager
     claudeManager = new ClaudeInstanceManager();
     await claudeManager.initialize();
+    
+    // Set API key if available
+    if (apiKey) {
+      claudeManager.setApiKey(apiKey);
+      console.log('API key loaded from settings and applied to Claude manager');
+    } else {
+      console.warn('No API key found in settings. Users will need to configure it via Settings.');
+    }
+    
     setupIPC(claudeManager);
   } catch (error) {
     console.error('Failed to initialize:', error);

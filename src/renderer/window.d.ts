@@ -49,6 +49,17 @@ declare global {
         record: (estimated: number, actual?: number, percentage?: number, warningLevel?: string) =>
           Promise<{ success: boolean; error?: string }>;
       };
+
+      settings: {
+        setApiKey: (apiKey: string) => Promise<{ success: boolean; error?: string }>;
+        getApiKey: () => Promise<{ success: boolean; apiKey?: string; error?: string }>;
+        deleteApiKey: () => Promise<{ success: boolean; error?: string }>;
+        hasApiKey: () => Promise<{ success: boolean; hasKey?: boolean; error?: string }>;
+        getTheme: () => Promise<{ success: boolean; theme?: 'dark' | 'light'; error?: string }>;
+        setTheme: (theme: 'dark' | 'light') => Promise<{ success: boolean; error?: string }>;
+        getTerminalSettings: () => Promise<{ success: boolean; settings?: any; error?: string }>;
+        setTerminalSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
+      };
     };
   }
 }
