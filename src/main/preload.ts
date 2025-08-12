@@ -25,6 +25,7 @@ const api = {
     status: (instanceKey?: string) => ipcRenderer.invoke('claude:status', instanceKey),
     start: (instanceKey: string) => ipcRenderer.invoke('claude:start', instanceKey),
     startAll: () => ipcRenderer.invoke('claude:startAll'),
+    testApiKey: (apiKey: string) => ipcRenderer.invoke('claude:testApiKey', apiKey),
     onOutput: (instanceKey: string, callback: (data: string) => void) => {
       const channel = `claude:output:${instanceKey}`;
       const handler = (_: any, data: string) => callback(data);
@@ -87,7 +88,21 @@ const api = {
     getTheme: () => ipcRenderer.invoke('settings:getTheme'),
     setTheme: (theme: 'dark' | 'light') => ipcRenderer.invoke('settings:setTheme', theme),
     getTerminalSettings: () => ipcRenderer.invoke('settings:getTerminalSettings'),
-    setTerminalSettings: (settings: any) => ipcRenderer.invoke('settings:setTerminalSettings', settings)
+    setTerminalSettings: (settings: any) => ipcRenderer.invoke('settings:setTerminalSettings', settings),
+    isInMemoryMode: () => ipcRenderer.invoke('settings:isInMemoryMode'),
+    onInMemoryWarning: (callback: () => void) => {
+      const handler = () => callback();
+      ipcRenderer.on('settings:in-memory-warning', handler);
+      return () => ipcRenderer.removeListener('settings:in-memory-warning', handler);
+    }
+  },
+  
+  app: {
+    onInitializationError: (callback: (data: { message: string; timestamp: number }) => void) => {
+      const handler = (_: any, data: { message: string; timestamp: number }) => callback(data);
+      ipcRenderer.on('app:initialization-error', handler);
+      return () => ipcRenderer.removeListener('app:initialization-error', handler);
+    }
   }
 };
 

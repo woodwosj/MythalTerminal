@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import os from 'os';
 import Anthropic from '@anthropic-ai/sdk';
+import { TextBlock } from '@anthropic-ai/sdk/resources';
 // SECURITY FIX: Import security utilities
 import { InputValidator, ProcessLockManager, SECURITY_CONSTANTS } from '../shared/security';
 
@@ -77,6 +78,20 @@ export class ClaudeInstanceManager extends EventEmitter {
     
     if (!this.apiKey) {
       console.warn('No Anthropic API key found. Claude functionality will be limited.');
+      // Set all instances to idle instead of trying to initialize them
+      for (const [key, config] of Object.entries(CLAUDE_INSTANCES)) {
+        this.instances.set(key, {
+          name: config.name,
+          client: null,
+          prompt: config.prompt,
+          model: config.model,
+          restartAttempts: 0,
+          lastRestart: null,
+          status: 'idle',
+          conversation: []
+        });
+      }
+      return;
     }
     
     for (const [key, config] of Object.entries(CLAUDE_INSTANCES)) {
@@ -164,7 +179,10 @@ export class ClaudeInstanceManager extends EventEmitter {
     }
 
     if (!this.apiKey) {
-      throw new Error('No Anthropic API key available. Please set ANTHROPIC_API_KEY environment variable.');
+      console.warn(`Claude instance ${instanceKey} cannot be initialized: No API key available`);
+      instance.status = 'idle';
+      this.emit('instance:error', { instanceKey, error: 'No API key configured' });
+      return;
     }
 
     // SECURITY FIX: Acquire lock to prevent race conditions
@@ -295,9 +313,15 @@ export class ClaudeInstanceManager extends EventEmitter {
         messages: instanceAfterInit.conversation.slice(-10), // Keep last 10 messages for context
       });
 
+      // Type guard function for TextBlock with proper TypeScript type narrowing
+      function isTextBlock(content: any): content is TextBlock {
+        return content?.type === 'text' && typeof content?.text === 'string';
+      }
+
+      // Safely extract text content with proper type guards
       const assistantResponse = response.content
-        .filter(content => content.type === 'text')
-        .map(content => (content as any).text)
+        .filter(isTextBlock)
+        .map(content => content.text)
         .join('');
 
       // Add assistant response to conversation
@@ -318,9 +342,18 @@ export class ClaudeInstanceManager extends EventEmitter {
   }
 
   async startAll() {
+    if (!this.apiKey) {
+      console.warn('Cannot start Claude instances: No API key configured');
+      return;
+    }
+    
     for (const key of this.instances.keys()) {
-      await this.initializeInstance(key);
-      await new Promise(resolve => setTimeout(resolve, 500));
+      try {
+        await this.initializeInstance(key);
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (error) {
+        console.error(`Failed to start instance ${key}:`, error);
+      }
     }
   }
 

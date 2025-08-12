@@ -141,6 +141,49 @@ export function setupIPC(claudeManager: ClaudeInstanceManager) {
     }
   });
 
+  // Test if an API key is valid by attempting a minimal API call
+  ipcMain.handle('claude:testApiKey', async (event, apiKey: string) => {
+    try {
+      // Import Anthropic SDK for creating a separate test client
+      const Anthropic = require('@anthropic-ai/sdk').default;
+      
+      // Create a separate test client to avoid modifying global state
+      const testClient = new Anthropic({
+        apiKey: apiKey
+      });
+      
+      try {
+        // Try to make a minimal API call with the test client
+        const response = await testClient.messages.create({
+          model: 'claude-3-haiku-20240307', // Use cheapest model for testing
+          max_tokens: 10,
+          messages: [{
+            role: 'user',
+            content: 'Hi'
+          }]
+        });
+        
+        // If we get here, the API key is valid
+        return { success: true, message: 'API key is valid' };
+      } catch (testError: any) {
+        // Check for specific API errors
+        const errorMessage = testError.message || testError.toString();
+        
+        if (testError.status === 401 || errorMessage.includes('401') || errorMessage.includes('authentication')) {
+          return { success: false, error: 'Invalid API key' };
+        } else if (testError.status === 429 || errorMessage.includes('429')) {
+          return { success: false, error: 'Rate limit exceeded' };
+        } else if (testError.status === 400 || errorMessage.includes('400')) {
+          return { success: false, error: 'Invalid request format' };
+        } else {
+          return { success: false, error: 'Could not validate API key: ' + errorMessage };
+        }
+      }
+    } catch (error: any) {
+      return { success: false, error: error.message || 'Failed to test API key' };
+    }
+  });
+
   // Context layer management
   ipcMain.handle('context:save', async (event, layer: db.ContextLayer) => {
     try {
@@ -339,6 +382,15 @@ export function setupIPC(claudeManager: ClaudeInstanceManager) {
   ipcMain.handle('settings:setTerminalSettings', (event, settings: any) => {
     try {
       return settingsManager.setTerminalSettings(settings);
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Check if settings are in memory-only mode
+  ipcMain.handle('settings:isInMemoryMode', () => {
+    try {
+      return { success: true, inMemoryMode: settingsManager.isInMemoryMode() };
     } catch (error: any) {
       return { success: false, error: error.message };
     }

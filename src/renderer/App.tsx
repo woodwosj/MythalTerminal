@@ -16,12 +16,39 @@ function App() {
   const [activeTab, setActiveTab] = useState<'terminal' | 'context' | 'clipboard' | 'planner'>('terminal');
   const [projectPath, setProjectPath] = useState('/home/user/project');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [warningMessage, setWarningMessage] = useState<string | null>(null);
   const { initializeClaude } = useTerminalStore();
   const { loadContext } = useContextStore();
 
   useEffect(() => {
     initializeClaude();
     loadContext(projectPath);
+    
+    // Listen for in-memory warning
+    const unsubscribeInMemory = window.mythalAPI.settings.onInMemoryWarning(() => {
+      setWarningMessage('⚠️ Settings are running in memory-only mode. Your settings will not persist after closing the app.');
+      setTimeout(() => setWarningMessage(null), 10000); // Hide after 10 seconds
+    });
+    
+    // Listen for initialization errors
+    const unsubscribeInitError = window.mythalAPI.app.onInitializationError((data) => {
+      console.error('Initialization error:', data.message);
+      setWarningMessage(`⚠️ Initialization Error: ${data.message}`);
+      setTimeout(() => setWarningMessage(null), 15000); // Hide after 15 seconds
+    });
+    
+    // Check if already in memory mode on startup
+    window.mythalAPI.settings.isInMemoryMode().then(result => {
+      if (result.success && result.inMemoryMode) {
+        setWarningMessage('⚠️ Settings are running in memory-only mode. Your settings will not persist after closing the app.');
+        setTimeout(() => setWarningMessage(null), 10000);
+      }
+    });
+    
+    return () => {
+      unsubscribeInMemory();
+      unsubscribeInitError();
+    };
   }, []);
 
   const handleRefresh = async () => {
@@ -33,6 +60,19 @@ function App() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-900">
+      {/* Warning Banner */}
+      {warningMessage && (
+        <div className="bg-yellow-600 text-white px-4 py-2 text-sm flex items-center justify-between">
+          <span>{warningMessage}</span>
+          <button 
+            onClick={() => setWarningMessage(null)}
+            className="ml-4 hover:bg-yellow-700 rounded px-2 py-1"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      
       <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
         <div className="flex items-center space-x-4">
           <span className="text-sm text-gray-400">📁 {projectPath}</span>

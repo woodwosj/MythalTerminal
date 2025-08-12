@@ -12,6 +12,8 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationResult, setValidationResult] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -41,8 +43,52 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   };
 
   const validateApiKey = (key: string): boolean => {
-    // Basic validation for Anthropic API key format
-    return key.startsWith('sk-ant-') && key.length > 20;
+    // More comprehensive validation for Anthropic API key format
+    const trimmed = key.trim();
+    
+    // Check basic format requirements - API keys start with 'sk-ant-'
+    if (!trimmed.startsWith('sk-ant-')) {
+      setError('API key should start with "sk-ant-"');
+      return false;
+    }
+    
+    // Check minimum length (typical Anthropic keys are ~100 chars)
+    if (trimmed.length < 50) {
+      setError('API key appears too short. Please check you copied the entire key.');
+      return false;
+    }
+    
+    // Check for common copy-paste errors
+    if (trimmed.includes(' ') || trimmed.includes('\n') || trimmed.includes('\t')) {
+      setError('API key contains whitespace. Please remove any spaces or line breaks.');
+      return false;
+    }
+    
+    return true;
+  };
+
+  const testApiKey = async (key: string): Promise<boolean> => {
+    setIsValidating(true);
+    setValidationResult(null);
+    
+    try {
+      // Test the API key by attempting to use it
+      const result = await window.mythalAPI.claude.testApiKey?.(key);
+      
+      if (result?.success) {
+        setValidationResult('✓ API key validated successfully');
+        return true;
+      } else {
+        setValidationResult('✗ API key validation failed: ' + (result?.error || 'Invalid key'));
+        return false;
+      }
+    } catch (err) {
+      console.error('Error testing API key:', err);
+      setValidationResult('✗ Could not validate API key');
+      return false;
+    } finally {
+      setIsValidating(false);
+    }
   };
 
   const handleSave = async () => {
@@ -55,7 +101,13 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     }
 
     if (!validateApiKey(apiKey)) {
-      setError('Invalid API key format. Should start with "sk-ant-"');
+      return; // Error already set in validateApiKey
+    }
+    
+    // Optionally test the API key works
+    const isValid = await testApiKey(apiKey);
+    if (!isValid && validationResult) {
+      setError(validationResult);
       return;
     }
 
@@ -169,7 +221,7 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   onChange={(e) => setApiKey(e.target.value)}
                   placeholder="sk-ant-..."
                   className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  disabled={isLoading}
+                  disabled={isLoading || isValidating}
                 />
                 <p className="mt-1 text-xs text-gray-500">
                   Your API key is stored securely and never exposed in the renderer process
@@ -184,6 +236,12 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
             {success && (
               <p className="mt-2 text-sm text-green-400">
                 ✓ API key saved successfully
+              </p>
+            )}
+            
+            {validationResult && !error && (
+              <p className={`mt-2 text-sm ${validationResult.startsWith('✓') ? 'text-green-400' : 'text-yellow-400'}`}>
+                {validationResult}
               </p>
             )}
           </div>
@@ -210,9 +268,9 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
               <button
                 onClick={handleSave}
                 className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors disabled:opacity-50"
-                disabled={isLoading}
+                disabled={isLoading || isValidating}
               >
-                {isLoading ? 'Saving...' : 'Save'}
+                {isLoading ? 'Saving...' : isValidating ? 'Validating...' : 'Save'}
               </button>
             </div>
           )}

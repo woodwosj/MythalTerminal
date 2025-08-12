@@ -46,9 +46,19 @@ async function initialize() {
   try {
     await setupDatabase();
     
-    // Initialize settings manager and load API key
-    const settingsManager = new SettingsManager();
-    const apiKey = settingsManager.getApiKey();
+    // Initialize settings manager with error handling
+    let settingsManager: SettingsManager | null = null;
+    let apiKey: string | null = null;
+    
+    try {
+      settingsManager = new SettingsManager();
+      apiKey = settingsManager.getApiKey();
+      console.log('Settings manager initialized successfully');
+    } catch (settingsError: any) {
+      console.error('Error initializing settings manager:', settingsError);
+      console.warn('Continuing with default settings and no API key');
+      // Continue without settings - app should still work
+    }
     
     // Initialize Claude manager
     claudeManager = new ClaudeInstanceManager();
@@ -65,7 +75,17 @@ async function initialize() {
     setupIPC(claudeManager);
   } catch (error) {
     console.error('Failed to initialize:', error);
-    app.quit();
+    // Security fix: Use IPC instead of executeJavaScript to prevent XSS
+    if (mainWindow) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      // Send error safely through IPC
+      mainWindow.webContents.send('app:initialization-error', {
+        message: errorMessage,
+        timestamp: Date.now()
+      });
+    }
+    // Still allow the app to run, but with limited functionality
+    // app.quit(); // Commented out to allow app to start even with errors
   }
 }
 

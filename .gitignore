@@ -10,3 +10,16 @@ dist-electron/
 *.db-shm
 *.db-wal
 .claude/settings.local.json
+
+# Test files and API keys
+test-*.js
+setup-api-key.js
+test_api_key.txt
+verify-*.js
+debug-*.js
+final-*.js
+*_FIXES*.md
+*_FIX_*.md
+
+# Security test files
+tests/security-verification.test.ts

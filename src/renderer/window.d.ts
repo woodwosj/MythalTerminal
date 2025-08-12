@@ -15,6 +15,7 @@ declare global {
         status: (instanceKey?: string) => Promise<any>;
         start: (instanceKey: string) => Promise<{ success: boolean; error?: string }>;
         startAll: () => Promise<{ success: boolean; error?: string }>;
+        testApiKey: (apiKey: string) => Promise<{ success: boolean; message?: string; error?: string }>;
         onOutput: (instanceKey: string, callback: (data: string) => void) => () => void;
         onError: (instanceKey: string, callback: (data: string) => void) => () => void;
         onStarted: (callback: (instanceKey: string) => void) => () => void;
@@ -59,6 +60,12 @@ declare global {
         setTheme: (theme: 'dark' | 'light') => Promise<{ success: boolean; error?: string }>;
         getTerminalSettings: () => Promise<{ success: boolean; settings?: any; error?: string }>;
         setTerminalSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
+        isInMemoryMode: () => Promise<{ success: boolean; inMemoryMode?: boolean; error?: string }>;
+        onInMemoryWarning: (callback: () => void) => () => void;
+      };
+      
+      app: {
+        onInitializationError: (callback: (data: { message: string; timestamp: number }) => void) => () => void;
       };
     };
   }
