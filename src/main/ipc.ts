@@ -1,6 +1,7 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import { ClaudeInstanceManager } from './claudeManager';
 import { SettingsManager } from './settingsManager';
+import { getClipboardManager } from './clipboardManager';
 import * as db from './database';
 import { spawn } from 'child_process';
 import * as pty from 'node-pty';
@@ -231,10 +232,25 @@ export function setupIPC(claudeManager: ClaudeInstanceManager) {
     }
   });
 
-  // Clipboard management
+  // Enhanced Clipboard management with auto-save
   ipcMain.handle('clipboard:save', async (event, content: string, category?: string, tags?: string[]) => {
     try {
-      await db.saveClipboardItem(content, category, tags);
+      // Get the project path from the current window or use default
+      const projectPath = BrowserWindow.getFocusedWindow()?.webContents.getURL().includes('projectPath=') 
+        ? new URL(BrowserWindow.getFocusedWindow()!.webContents.getURL()).searchParams.get('projectPath') || undefined
+        : undefined;
+      
+      const clipboardManager = getClipboardManager(projectPath);
+      
+      // If content is JSON stringified entries array, save directly
+      if (category === 'clipboard_data' && tags?.includes('auto_save')) {
+        const entries = JSON.parse(content);
+        await clipboardManager.save(entries);
+      } else {
+        // Legacy save for backward compatibility
+        await db.saveClipboardItem(content, category, tags);
+      }
+      
       return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message };
@@ -243,8 +259,79 @@ export function setupIPC(claudeManager: ClaudeInstanceManager) {
 
   ipcMain.handle('clipboard:get', async (event, category?: string) => {
     try {
-      const items = await db.getClipboardItems(category);
+      // Get the project path from the current window or use default
+      const projectPath = BrowserWindow.getFocusedWindow()?.webContents.getURL().includes('projectPath=') 
+        ? new URL(BrowserWindow.getFocusedWindow()!.webContents.getURL()).searchParams.get('projectPath') || undefined
+        : undefined;
+      
+      const clipboardManager = getClipboardManager(projectPath);
+      
+      // Return new format data
+      const items = await clipboardManager.get();
       return { success: true, items };
+    } catch (error: any) {
+      // Fallback to legacy database
+      try {
+        const items = await db.getClipboardItems(category);
+        return { success: true, items };
+      } catch (dbError: any) {
+        return { success: false, error: dbError.message };
+      }
+    }
+  });
+
+  // New clipboard handlers for enhanced features
+  ipcMain.handle('clipboard:search', async (event, query: string) => {
+    try {
+      const projectPath = BrowserWindow.getFocusedWindow()?.webContents.getURL().includes('projectPath=') 
+        ? new URL(BrowserWindow.getFocusedWindow()!.webContents.getURL()).searchParams.get('projectPath') || undefined
+        : undefined;
+      
+      const clipboardManager = getClipboardManager(projectPath);
+      const results = await clipboardManager.search(query);
+      return { success: true, results };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('clipboard:stats', async (event) => {
+    try {
+      const projectPath = BrowserWindow.getFocusedWindow()?.webContents.getURL().includes('projectPath=') 
+        ? new URL(BrowserWindow.getFocusedWindow()!.webContents.getURL()).searchParams.get('projectPath') || undefined
+        : undefined;
+      
+      const clipboardManager = getClipboardManager(projectPath);
+      const stats = await clipboardManager.getStats();
+      return { success: true, stats };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('clipboard:export', async (event) => {
+    try {
+      const projectPath = BrowserWindow.getFocusedWindow()?.webContents.getURL().includes('projectPath=') 
+        ? new URL(BrowserWindow.getFocusedWindow()!.webContents.getURL()).searchParams.get('projectPath') || undefined
+        : undefined;
+      
+      const clipboardManager = getClipboardManager(projectPath);
+      const data = await clipboardManager.export();
+      return { success: true, data };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('clipboard:import', async (event, data: string) => {
+    try {
+      const projectPath = BrowserWindow.getFocusedWindow()?.webContents.getURL().includes('projectPath=') 
+        ? new URL(BrowserWindow.getFocusedWindow()!.webContents.getURL()).searchParams.get('projectPath') || undefined
+        : undefined;
+      
+      const clipboardManager = getClipboardManager(projectPath);
+      await clipboardManager.import(data);
+      return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message };
     }
